@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>体内時計ジャスト止めチャレンジ</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
+    body { 
+      font-family: 'Noto Sans JP', sans-serif; 
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* テンポ感を与えない静かな超低速回転リング */
+    @keyframes slow-rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .spin-slow {
+      animation: slow-rotate 20s linear infinite;
+    }
+  </style>
+</head>
+<body class="bg-[#020617] text-slate-100 min-h-screen flex flex-col justify-between selection:bg-cyan-500 selection:text-white">
+
+  <!-- ヘッダー（右上の不要なバッジを完全撤去してシンプル化） -->
+  <header class="w-full max-w-2xl mx-auto pt-5 px-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <a href="../" class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-100 transition py-1.5 px-3 rounded-xl bg-slate-900 border border-slate-800">
+        <i class="fa-solid fa-arrow-left text-[10px]"></i>
+        <span>Apps Hub</span>
+      </a>
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-xl bg-cyan-600/30 border border-cyan-500/40 text-cyan-400 flex items-center justify-center text-sm shadow-lg shadow-cyan-900/30">
+          <i class="fa-solid fa-stopwatch"></i>
+        </div>
+        <div>
+          <h1 class="text-sm font-bold tracking-tight text-white">体内時計ジャスト止め</h1>
+          <p class="text-[10px] text-slate-400 leading-none">感覚だけで止めるミニマル体感ゲーム</p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- メイン測定エリア（キャプチャ対象） -->
+  <main id="capture-area" class="w-full max-w-xl mx-auto px-4 py-4 flex flex-col items-center">
+    
+    <!-- モード切り替えタブ -->
+    <div class="w-full bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 flex items-center gap-1 text-xs font-bold mb-3 shadow-inner">
+      <button onclick="setMode('1s')" id="tab-1s" class="flex-1 py-2 rounded-xl transition text-slate-400 hover:text-slate-200 flex items-center justify-center gap-1.5">
+        <i class="fa-solid fa-bolt text-[11px]"></i>
+        <span>1.00秒</span>
+      </button>
+      <button onclick="setMode('10s')" id="tab-10s" class="flex-1 py-2 rounded-xl transition bg-cyan-600 text-white shadow-md flex items-center justify-center gap-1.5">
+        <i class="fa-solid fa-bullseye text-[11px]"></i>
+        <span>10.00秒</span>
+      </button>
+      <button onclick="setMode('custom')" id="tab-custom" class="flex-1 py-2 rounded-xl transition text-slate-400 hover:text-slate-200 flex items-center justify-center gap-1.5">
+        <i class="fa-solid fa-sliders text-[11px]"></i>
+        <span>カスタム</span>
+      </button>
+    </div>
+
+    <!-- カスタム秒数設定バー（カスタムタブ選択時のみ表示） -->
+    <div id="custom-setting-box" class="w-full bg-slate-900/60 p-3 rounded-2xl border border-slate-800/80 mb-3 hidden">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-400 font-bold">目標秒数:</span>
+          <div class="flex items-center gap-1">
+            <input type="number" id="input-custom-sec" value="5.00" min="0.5" max="60" step="0.5" onchange="updateCustomTarget(this.value)" class="w-20 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-sm font-bold text-cyan-400 mono text-center focus:outline-none focus:border-cyan-500">
+            <span class="text-xs text-slate-400">秒</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5 text-[11px]">
+          <button onclick="updateCustomTarget(3)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded-md text-slate-300 font-mono transition">3s</button>
+          <button onclick="updateCustomTarget(5)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded-md text-slate-300 font-mono transition">5s</button>
+          <button onclick="updateCustomTarget(15)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded-md text-slate-300 font-mono transition">15s</button>
+          <button onclick="updateCustomTarget(30)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded-md text-slate-300 font-mono transition">30s</button>
+          <button onclick="updateCustomTarget(60)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded-md text-slate-300 font-mono transition">60s</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ターゲット & 自己ベスト表示 -->
+    <div class="w-full flex items-center justify-between text-xs px-2 mb-4 font-medium text-slate-400">
+      <div class="flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-cyan-500"></span>
+        <span>目標: <strong id="lbl-target" class="mono text-white font-bold">10.000秒</strong>ピッタリ</span>
+      </div>
+      <div>
+        <span>自己ベスト最小誤差: </span>
+        <strong id="lbl-best-diff" class="mono text-amber-400 font-bold">--</strong>
+      </div>
+    </div>
+
+    <!-- メインタップターゲット円 -->
+    <div id="trigger-circle" class="relative w-72 h-72 sm:w-80 sm:h-80 rounded-full border-4 border-slate-800 bg-slate-900/60 shadow-2xl flex flex-col items-center justify-center cursor-pointer select-none transition-transform active:scale-95 group overflow-hidden">
+      
+      <!-- 外周リング -->
+      <div id="ring-outer" class="absolute inset-0 rounded-full border border-cyan-500/20 spin-slow pointer-events-none"></div>
+      
+      <!-- 計測中の微弱な静止オーラ枠（点滅・点滅ドットなし） -->
+      <div id="measuring-halo" class="absolute inset-3 rounded-full border border-cyan-500/30 opacity-0 transition-opacity duration-300 pointer-events-none"></div>
+
+      <!-- 中央コンテンツ（pointer-events-noneで親要素のクリックを阻害しない） -->
+      <div class="relative z-10 flex flex-col items-center text-center p-4 pointer-events-none">
+        
+        <div id="icon-state" class="text-3xl text-cyan-400 mb-2 transition">
+          <i class="fa-solid fa-play"></i>
+        </div>
+
+        <div id="text-state" class="text-xs font-bold tracking-widest text-slate-400 uppercase mb-1">
+          START
+        </div>
+
+        <div id="display-center" class="mono font-extrabold text-2xl sm:text-3xl text-white tracking-tight">
+          画面をタップ
+        </div>
+
+        <p id="sub-guide" class="text-[11px] text-slate-500 mt-2">
+          タップまたはSpaceキーで開始
+        </p>
+
+      </div>
+    </div>
+
+    <div class="mt-4 text-[11px] text-slate-500 flex items-center gap-1.5 text-center">
+      <span>※音・数字・点滅などのテンポガイドなし。己の体内感覚だけで止めてください</span>
+    </div>
+
+    <!-- 測定結果カード -->
+    <div id="result-card" class="w-full mt-4 bg-slate-900/90 rounded-3xl border border-slate-800 p-5 shadow-2xl hidden">
+      
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div>
+          <div class="text-[10px] font-bold text-slate-400 tracking-wider">RANK</div>
+          <div class="text-base sm:text-lg font-black text-amber-300 flex items-center gap-1.5 mt-0.5">
+            <span id="rank-icon">👑</span>
+            <span id="rank-title">神域・人間時計</span>
+          </div>
+        </div>
+        <div class="text-right">
+          <div class="text-[10px] font-bold text-slate-400 tracking-wider">シンクロ率</div>
+          <div id="rank-score" class="mono text-base sm:text-lg font-black text-cyan-400 mt-0.5">
+            100.0%
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 my-4">
+        <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800/80 text-center">
+          <span class="text-[10px] text-slate-400 font-bold block mb-1">測定タイム</span>
+          <div class="mono text-2xl sm:text-3xl font-black text-white">
+            <span id="res-time">10.003</span><span class="text-xs font-normal text-slate-400 ml-1">秒</span>
+          </div>
+        </div>
+        <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800/80 text-center">
+          <span class="text-[10px] text-slate-400 font-bold block mb-1">誤差 (ズレ)</span>
+          <div class="mono text-2xl sm:text-3xl font-black">
+            <span id="res-diff" class="text-emerald-400">+0.003</span><span class="text-xs font-normal text-slate-400 ml-1">秒</span>
+          </div>
+        </div>
+      </div>
+
+      <p id="rank-desc" class="text-xs text-slate-300 bg-slate-950/60 p-3 rounded-xl border border-slate-800/60 leading-relaxed mb-4 text-center">
+        神業ジャスト！誤差0.03秒未満の超人的体内時計。体内に原子時計が埋め込まれているレベルです。
+      </p>
+
+      <!-- 操作ボタン -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <button onclick="resetChallenge()" class="py-2.5 px-3 bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-md">
+          <i class="fa-solid fa-rotate-right"></i>
+          <span>もう一度挑戦</span>
+        </button>
+
+        <button onclick="copyResultText()" id="btn-copy-text" class="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition flex items-center justify-center gap-1.5">
+          <i class="fa-regular fa-clipboard"></i>
+          <span id="lbl-copy-text">結果をコピー</span>
+        </button>
+
+        <button onclick="downloadScreenshot()" id="btn-save-img" class="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition flex items-center justify-center gap-1.5">
+          <i class="fa-solid fa-camera"></i>
+          <span id="lbl-save-img">画像保存</span>
+        </button>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- トースト通知 -->
+  <div id="toast" class="fixed bottom-12 left-1/2 -translate-x-1/2 bg-slate-800 text-slate-100 border border-slate-700 text-xs px-4 py-2.5 rounded-full shadow-2xl transition-opacity duration-200 opacity-0 pointer-events-none z-50 flex items-center gap-2">
+    <i id="toast-icon" class="fa-solid fa-check text-emerald-400"></i>
+    <span id="toast-text">通知</span>
+  </div>
+
+  <!-- フッター（標準免責文） -->
+  <footer class="w-full max-w-2xl mx-auto py-3 px-4 border-t border-slate-900 mt-4">
+    <p class="text-[11px] text-slate-500 text-center leading-relaxed">
+      ※個人開発プロトタイプにつき無保証・自己責任にてご利用ください（データは端末内完結・サポート対象外）
+    </p>
+  </footer>
+
+  <script>
+    let currentMode = '10s';
+    let targetSeconds = 10.0;
+    let customTargetSeconds = 5.0;
+
+    let isRunning = false;
+    let startTime = 0;
+    let finishTime = 0;
+
+    let lastResult = null;
+
+    const RANKS = [
+      { maxDiff: 0.030, rank: 'GOD', title: '神域・人間時計', icon: '👑', desc: '神業ジャスト！誤差0.03秒未満の超人的体内時計。体内に原子時計が埋め込まれているレベルです。', color: 'text-amber-300' },
+      { maxDiff: 0.100, rank: 'MASTER', title: '超感覚マスター', icon: '⭐', desc: '恐るべき精度！わずか0.1秒未満の誤差。プロの演奏家やアスリート並みの時間把握力です。', color: 'text-cyan-400' },
+      { maxDiff: 0.250, rank: 'EXPERT', title: '時間感覚の達人', icon: '🎖️', desc: 'お見事！体内リズムが安定しています。日常の時間感覚テストとしては上位数%の好記録。', color: 'text-emerald-400' },
+      { maxDiff: 0.500, rank: 'NORMAL', title: '標準的な地球人', icon: '⏱️', desc: '標準的な時間感覚です。数回挑戦して体内リズムのペースを掴めばさらに縮まります！', color: 'text-blue-400' },
+      { maxDiff: 1.000, rank: 'DRIFT', title: 'ややズレ気味', icon: '🌀', desc: '少しテンポが早かったか、あるいは遅かったようです。深呼吸して自分の心拍やリズムを感じてみましょう。', color: 'text-violet-400' },
+      { maxDiff: Infinity, rank: 'LOST', title: '時空の旅人', icon: '🚀', desc: '時間の流れが歪んでいたようです！完全にリセットしてもう一度体内カウントに集中してみましょう。', color: 'text-rose-400' }
+    ];
+
+    function init() {
+      loadBestRecords();
+      updateUIForMode();
+
+      // クリック & タッチイベントをリスナー登録
+      const circle = document.getElementById('trigger-circle');
+      circle.addEventListener('click', handleAction);
+      circle.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        handleAction();
+      }, { passive: false });
+
+      // Spaceキー操作
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
+          e.preventDefault();
+          handleAction();
+        }
+      });
+    }
+
+    function handleAction() {
+      if (!isRunning) {
+        startChallenge();
+      } else {
+        stopChallenge();
+      }
+    }
+
+    function setMode(mode) {
+      if (isRunning) return;
+      currentMode = mode;
+
+      const tab1s = document.getElementById('tab-1s');
+      const tab10s = document.getElementById('tab-10s');
+      const tabCustom = document.getElementById('tab-custom');
+      const customBox = document.getElementById('custom-setting-box');
+
+      [tab1s, tab10s, tabCustom].forEach(tab => {
+        tab.className = 'flex-1 py-2 rounded-xl transition text-slate-400 hover:text-slate-200 flex items-center justify-center gap-1.5';
+      });
+
+      if (mode === '1s') {
+        targetSeconds = 1.0;
+        tab1s.className = 'flex-1 py-2 rounded-xl transition bg-cyan-600 text-white shadow-md flex items-center justify-center gap-1.5';
+        customBox.classList.add('hidden');
+      } else if (mode === '10s') {
+        targetSeconds = 10.0;
+        tab10s.className = 'flex-1 py-2 rounded-xl transition bg-cyan-600 text-white shadow-md flex items-center justify-center gap-1.5';
+        customBox.classList.add('hidden');
+      } else {
+        targetSeconds = customTargetSeconds;
+        tabCustom.className = 'flex-1 py-2 rounded-xl transition bg-cyan-600 text-white shadow-md flex items-center justify-center gap-1.5';
+        customBox.classList.remove('hidden');
+      }
+
+      updateUIForMode();
+      resetChallenge();
+    }
+
+    function updateCustomTarget(val) {
+      let num = parseFloat(val);
+      if (isNaN(num) || num < 0.5) num = 0.5;
+      if (num > 60) num = 60;
+      customTargetSeconds = num;
+      document.getElementById('input-custom-sec').value = num.toFixed(2);
+      if (currentMode === 'custom') {
+        targetSeconds = num;
+        updateUIForMode();
+        resetChallenge();
+      }
+    }
+
+    function updateUIForMode() {
+      document.getElementById('lbl-target').textContent = `${targetSeconds.toFixed(3)}秒`;
+      loadBestRecords();
+    }
+
+    function getBestKey() {
+      return `inner_best_${currentMode === 'custom' ? `custom_${targetSeconds}` : currentMode}`;
+    }
+
+    function loadBestRecords() {
+      const best = localStorage.getItem(getBestKey());
+      const lbl = document.getElementById('lbl-best-diff');
+      lbl.textContent = best ? `±${parseFloat(best).toFixed(3)}s` : '--';
+    }
+
+    function saveBestRecord(diffAbs) {
+      const key = getBestKey();
+      const current = localStorage.getItem(key);
+      if (!current || diffAbs < parseFloat(current)) {
+        localStorage.setItem(key, diffAbs.toFixed(3));
+        loadBestRecords();
+      }
+    }
+
+    function startChallenge() {
+      isRunning = true;
+      startTime = performance.now();
+
+      document.getElementById('trigger-circle').classList.add('border-cyan-500/80');
+      document.getElementById('measuring-halo').classList.remove('opacity-0');
+      document.getElementById('icon-state').innerHTML = '<i class="fa-solid fa-stopwatch text-cyan-400"></i>';
+      document.getElementById('text-state').textContent = 'MEASURING...';
+      document.getElementById('display-center').textContent = '測定中';
+      document.getElementById('sub-guide').textContent = '目標の瞬間にタップ！';
+
+      document.getElementById('result-card').classList.add('hidden');
+    }
+
+    function stopChallenge() {
+      isRunning = false;
+      finishTime = performance.now();
+
+      const elapsedSec = (finishTime - startTime) / 1000;
+      const diffSec = elapsedSec - targetSeconds;
+      const diffAbs = Math.abs(diffSec);
+
+      saveBestRecord(diffAbs);
+
+      document.getElementById('trigger-circle').classList.remove('border-cyan-500/80');
+      document.getElementById('measuring-halo').classList.add('opacity-0');
+      document.getElementById('icon-state').innerHTML = '<i class="fa-solid fa-rotate-right text-cyan-400"></i>';
+      document.getElementById('text-state').textContent = 'RESULT';
+      document.getElementById('display-center').textContent = `${elapsedSec.toFixed(3)}s`;
+      document.getElementById('sub-guide').textContent = 'タップでもう一度';
+
+      showResult(elapsedSec, diffSec, diffAbs);
+    }
+
+    function showResult(elapsed, diff, diffAbs) {
+      const card = document.getElementById('result-card');
+      card.classList.remove('hidden');
+
+      const rank = RANKS.find(r => diffAbs < r.maxDiff) || RANKS[RANKS.length - 1];
+      const ratio = Math.max(0, 1 - (diffAbs / targetSeconds));
+      const syncPercent = (ratio * 100).toFixed(1);
+
+      document.getElementById('rank-icon').textContent = rank.icon;
+      document.getElementById('rank-title').textContent = rank.title;
+      document.getElementById('rank-title').className = `font-black text-base sm:text-lg flex items-center gap-1.5 ${rank.color}`;
+      document.getElementById('rank-score').textContent = `${syncPercent}%`;
+
+      document.getElementById('res-time').textContent = elapsed.toFixed(3);
+
+      const resDiffEl = document.getElementById('res-diff');
+      const sign = diff >= 0 ? '+' : '';
+      resDiffEl.textContent = `${sign}${diff.toFixed(3)}`;
+      resDiffEl.className = diffAbs < 0.05 ? 'text-emerald-400' : (diffAbs < 0.25 ? 'text-cyan-400' : 'text-amber-400');
+
+      document.getElementById('rank-desc').textContent = rank.desc;
+
+      lastResult = {
+        target: targetSeconds.toFixed(3),
+        elapsed: elapsed.toFixed(3),
+        diff: `${sign}${diff.toFixed(3)}`,
+        title: rank.title,
+        icon: rank.icon,
+        sync: syncPercent
+      };
+    }
+
+    function resetChallenge() {
+      isRunning = false;
+      document.getElementById('trigger-circle').classList.remove('border-cyan-500/80');
+      document.getElementById('measuring-halo').classList.add('opacity-0');
+      document.getElementById('icon-state').innerHTML = '<i class="fa-solid fa-play text-cyan-400"></i>';
+      document.getElementById('text-state').textContent = 'START';
+      document.getElementById('display-center').textContent = '画面をタップ';
+      document.getElementById('sub-guide').textContent = 'タップまたはSpaceキーで開始';
+      document.getElementById('result-card').classList.add('hidden');
+    }
+
+    function copyResultText() {
+      if (!lastResult) return;
+      const text = `【体内時計ジャスト止め】\n🎯 目標: ${lastResult.target}秒\n⏱️ 記録: ${lastResult.elapsed}秒\n⚡ 誤差: ${lastResult.diff}秒 (シンクロ率: ${lastResult.sync}%)\n🏅 称号: ${lastResult.icon} ${lastResult.title}\n#体内時計チャレンジ #MiniGame`;
+
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('lbl-copy-text');
+        btn.textContent = 'コピー完了！';
+        showToast('📋 結果テキストをクリップボードにコピーしました！');
+        setTimeout(() => { btn.textContent = '結果をコピー'; }, 2000);
+      }).catch(() => {
+        showToast('❌ コピーに失敗しました');
+      });
+    }
+
+    async function downloadScreenshot() {
+      const area = document.getElementById('capture-area');
+      const btnLabel = document.getElementById('lbl-save-img');
+      const originalText = btnLabel.textContent;
+
+      btnLabel.textContent = '画像生成中...';
+
+      try {
+        const canvas = await html2canvas(area, {
+          backgroundColor: '#020617',
+          scale: 2,
+          useCORS: true,
+          logging: false
+        });
+
+        const link = document.createElement('a');
+        const fileName = `inner-clock_${lastResult ? lastResult.elapsed + 's' : 'result'}.png`;
+        link.download = fileName;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+
+        showToast('📸 画像をダウンロード保存しました！');
+      } catch (err) {
+        showToast('❌ 画像保存に失敗しました');
+      } finally {
+        btnLabel.textContent = originalText;
+      }
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      document.getElementById('toast-text').textContent = msg;
+      t.classList.remove('opacity-0');
+      setTimeout(() => {
+        t.classList.add('opacity-0');
+      }, 2500);
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
